@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "nombre": "Inclusión",
+    "descripcion": "Iniciativas son para promover accesibilidad, equidad y participacion.",
+    "activa": true
+  },
+  {
+    "id": 2,
+    "nombre": "Sostenibilidad",
+    "descripcion": "Iniciativas dedicadas a la sostenibilidad ambiental y el desarrollo sostenible.",
+    "activa": true
+  },
+  {
+    "id": 3,
+    "nombre": "Cultura",
+    "descripcion": "Iniciativas relacionadas con la preservación y promoción de la cultura.",
+    "activa": true
+  },
+  {
+    "id": 4,
+    "nombre": "Conciencia Social",
+    "descripcion": "Iniciativas que buscan sensibilizar sobre temas sociales y promover la responsabilidad ciudadana.",
+    "activa": true
+  },
+  {
+    "id": 5,
+    "nombre": "Bienestar",
+    "descripcion": "Iniciativas del programa de bienestar",
+    "activa": true
+  }
+]

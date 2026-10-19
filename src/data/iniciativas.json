@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1,
+    "titulo": "Campaña de reciclaje",
+    "categoria": "Sostenibilidad",
+    "responsable": "Grupo 701",
+    "activa": true
+  },
+  {
+    "id": 2,
+    "titulo": "Taller de inclusión",
+    "categoria": "Inclusión",
+    "responsable": "Grupo 701",
+    "activa": true
+  },
+  {
+    "id": 3,
+    "titulo": "Bazar de electrónicos",
+    "categoria": "Sostenibilidad",
+    "responsable": "Grupo 701",
+    "activa": true
+  },
+  {
+    "id": 4,
+    "titulo": "Taller de accesibilidad digital",
+    "categoria": "Inclusión",
+    "responsable": "Grupo 702",
+    "activa": true
+  },
+  {
+    "id": 5,
+    "titulo": "Campaña de reciclaje electrónico",
+    "categoria": "Sostenibilidad",
+    "responsable": "Grupo 702",
+    "activa": true
+  },
+  {
+    "id": 6,
+    "titulo": "Feria de Cultura Regional",
+    "categoria": "Cultura",
+    "responsable": "Grupo 703",
+    "activa": true
+  },
+  {
+    "id": 7,
+    "titulo": "Programa de Apoyo Comunitario",
+    "categoria": "Conciencia Social",
+    "responsable": "Grupo 703",
+    "activa": true
+  },
+  {
+    "id": 8,
+    "titulo": "Huerto Escolar",
+    "categoria": "Sostenibilidad",
+    "responsable": "Grupo 704",
+    "activa": true
+  },
+  {
+    "id": 9,
+    "titulo": "Foro de Patrimonio Local",
+    "categoria": "Cultura",
+    "responsable": "Grupo 704",
+    "activa": true
+  },
+  {
+    "id": 10,
+    "titulo": "Curso de Lengua de Señas",
+    "categoria": "Inclusión",
+    "responsable": "Grupo 704",
+    "activa": true
+  }
+]
