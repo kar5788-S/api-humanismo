@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "nombre": "Grupo 701",
+    "grado": 7,
+    "grupo": "01",
+    "turno": "Matutino",
+    "activo": true
+  },
+  {
+    "id": 2,
+    "nombre": "Grupo 702",
+    "grado": 7,
+    "grupo": "02",
+    "turno": "Matutino",
+    "activo": true
+  },
+  {
+    "id": 3,
+    "nombre": "Grupo 703",
+    "grado": 7,
+    "grupo": "03",
+    "turno": "Matutino",
+    "activo": true
+  },
+  {
+    "id": 4,
+    "nombre": "Grupo 704",
+    "grado": 7,
+    "grupo": "04",
+    "turno": "Matutino",
+    "activo": true
+  }
+]
