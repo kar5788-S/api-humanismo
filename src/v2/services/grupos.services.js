@@ -1,213 +1,118 @@
-// Servicio: módulo que concentra operaciones y reglas de negocio
-// para el recurso de grupos. Lee y escribe en data/grupos.json.
+import { getDB } from "../../config/database.js";
+import { calcularSiguienteId, crearError, textoRegex } from "./mongo-helpers.js";
 
-import { readFile, writeFile } from "node:fs/promises";
-
-const rutaGrupos = new URL("../../data/grupos.json", import.meta.url);
-
-// Utilidades
-
-function crearError(mensaje, statusCode) {
-    const error = new Error(mensaje);
-    error.statusCode = statusCode;
-    return error;
+function coleccion() {
+    return getDB().collection("grupos");
 }
 
-function normalizarTexto(valor = "") {
-    return valor
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLocaleLowerCase("es-MX")
-        .trim();
-}
-
-// Lectura y escritura del archivo.
-
-async function leerGrupos() {
-    const contenido = await readFile(rutaGrupos, "utf8");
-    return JSON.parse(contenido);
-}
-
-async function guardarGrupos(grupos) {
-    await writeFile(rutaGrupos, JSON.stringify(grupos, null, 2), "utf8");
-    return grupos;
-}
-
-// Operaciones del recurso.
-
-// Devuelve todos los grupos sin aplicar filtros.
 export async function obtenerGrupos() {
-    return await leerGrupos();
+    return coleccion().find({}, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
 }
 
-// Lista grupos y aplica los filtros opcionales recibidos.
 export async function listaGrupos({ nombre, turno, activo } = {}) {
-    let grupos = await leerGrupos();
-
-    if (typeof nombre === "string" && nombre.trim() !== "") {
-        grupos = grupos.filter((g) =>
-            normalizarTexto(g.nombre).includes(normalizarTexto(nombre))
-        );
+    const filtro = {};
+    if (typeof nombre === "string" && nombre.trim()) {
+        filtro.nombre = { $regex: textoRegex(nombre.trim()), $options: "i" };
     }
-
-    if (typeof turno === "string" && turno.trim() !== "") {
-        grupos = grupos.filter(
-            (g) => normalizarTexto(g.turno) === normalizarTexto(turno)
-        );
+    if (typeof turno === "string" && turno.trim()) {
+        filtro.turno = { $regex: `^${textoRegex(turno.trim())}$`, $options: "i" };
     }
-
     if (typeof activo === "boolean") {
-        grupos = grupos.filter((g) => g.activo === activo);
+        filtro.activo = activo;
     }
-
-    return grupos;
+    return coleccion().find(filtro, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
 }
 
-// Busca un grupo por ID y devuelve null si no existe.
 export async function obtenerGrupoId(id) {
-    const grupos = await leerGrupos();
-    return grupos.find((g) => g.id === id) ?? null;
+    return coleccion().findOne({ id }, { projection: { _id: 0 } });
 }
 
-// Valida y guarda un grupo nuevo.
 export async function crearGrupo({ nombre, grado, grupo, turno, activo = true } = {}) {
     const nombreListo = typeof nombre === "string" ? nombre.trim() : "";
-    if (!nombreListo) {
-        throw crearError("El nombre del grupo es obligatorio.", 400);
+    const grupoListo = typeof grupo === "string" ? grupo.trim() : "";
+    const turnoListo = typeof turno === "string" ? turno.trim() : "";
+    if (!nombreListo || !grupoListo || !turnoListo) {
+        throw crearError("nombre, grupo y turno son obligatorios.", 400);
     }
-
     if (!Number.isInteger(grado) || grado < 1) {
         throw crearError("El grado debe ser un entero positivo.", 400);
     }
-
-    const grupoListo = typeof grupo === "string" ? grupo.trim() : "";
-    if (!grupoListo) {
-        throw crearError("El campo grupo es obligatorio.", 400);
-    }
-
-    const turnoListo = typeof turno === "string" ? turno.trim() : "";
-    if (!turnoListo) {
-        throw crearError("El turno es obligatorio.", 400);
-    }
-
     if (typeof activo !== "boolean") {
-        throw crearError("El campo activo debe ser booleano.", 400);
+        throw crearError("activo debe ser un valor booleano.", 400);
     }
-
-    const grupos = await leerGrupos();
-
-    const existe = grupos.some(
-        (g) => normalizarTexto(g.nombre) === normalizarTexto(nombreListo)
-    );
-    if (existe) {
+    const duplicado = await coleccion().findOne({
+        nombre: { $regex: `^${textoRegex(nombreListo)}$`, $options: "i" },
+    });
+    if (duplicado) {
         throw crearError("Ya existe un grupo con ese nombre.", 409);
     }
 
-    const nuevoId =
-        grupos.length > 0 ? Math.max(...grupos.map((g) => g.id)) + 1 : 1;
-
     const nuevoGrupo = {
-        id: nuevoId,
+        id: await calcularSiguienteId(coleccion()),
         nombre: nombreListo,
         grado,
         grupo: grupoListo,
         turno: turnoListo,
         activo,
     };
-
-    grupos.push(nuevoGrupo);
-    await guardarGrupos(grupos);
-
+    await coleccion().insertOne(nuevoGrupo);
     return nuevoGrupo;
 }
 
-// Actualiza los campos proporcionados de un grupo existente.
 export async function actualizarGrupo(id, datos = {}) {
-    const grupos = await leerGrupos();
-    const indice = grupos.findIndex((g) => g.id === id);
-
-    if (indice === -1) {
-        return null;
-    }
-
-    const { nombre, grado, grupo, turno, activo } = datos;
-
-    if (nombre !== undefined) {
-        const nombreListo = typeof nombre === "string" ? nombre.trim() : "";
-        if (!nombreListo) {
-            throw crearError("El nombre no puede estar vacío.", 400);
+    const cambios = {};
+    for (const campo of ["nombre", "grupo", "turno"]) {
+        if (datos[campo] !== undefined) {
+            if (typeof datos[campo] !== "string" || !datos[campo].trim()) {
+                throw crearError(`${campo} debe ser un texto no vacío.`, 400);
+            }
+            cambios[campo] = datos[campo].trim();
         }
-        const duplicado = grupos.some(
-            (g) =>
-                g.id !== id &&
-                normalizarTexto(g.nombre) === normalizarTexto(nombreListo)
-        );
+    }
+    if (datos.grado !== undefined) {
+        if (!Number.isInteger(datos.grado) || datos.grado < 1) {
+            throw crearError("El grado debe ser un entero positivo.", 400);
+        }
+        cambios.grado = datos.grado;
+    }
+    if (datos.activo !== undefined) {
+        if (typeof datos.activo !== "boolean") {
+            throw crearError("activo debe ser un valor booleano.", 400);
+        }
+        cambios.activo = datos.activo;
+    }
+    if (!Object.keys(cambios).length) {
+        throw crearError("Debe proporcionar al menos un campo válido para actualizar.", 400);
+    }
+    if (cambios.nombre) {
+        const duplicado = await coleccion().findOne({
+            id: { $ne: id },
+            nombre: { $regex: `^${textoRegex(cambios.nombre)}$`, $options: "i" },
+        });
         if (duplicado) {
             throw crearError("Ya existe otro grupo con ese nombre.", 409);
         }
-        grupos[indice].nombre = nombreListo;
     }
-
-    if (grado !== undefined) {
-        if (!Number.isInteger(grado) || grado < 1) {
-            throw crearError("El grado debe ser un entero positivo.", 400);
-        }
-        grupos[indice].grado = grado;
-    }
-
-    if (grupo !== undefined) {
-        const grupoListo = typeof grupo === "string" ? grupo.trim() : "";
-        if (!grupoListo) {
-            throw crearError("El campo grupo no puede estar vacío.", 400);
-        }
-        grupos[indice].grupo = grupoListo;
-    }
-
-    if (turno !== undefined) {
-        const turnoListo = typeof turno === "string" ? turno.trim() : "";
-        if (!turnoListo) {
-            throw crearError("El turno no puede estar vacío.", 400);
-        }
-        grupos[indice].turno = turnoListo;
-    }
-
-    if (activo !== undefined) {
-        if (typeof activo !== "boolean") {
-            throw crearError("El campo activo debe ser booleano.", 400);
-        }
-        grupos[indice].activo = activo;
-    }
-
-    await guardarGrupos(grupos);
-    return grupos[indice];
+    return coleccion().findOneAndUpdate(
+        { id },
+        { $set: cambios },
+        { returnDocument: "after", projection: { _id: 0 } }
+    );
 }
 
-// Elimina físicamente un grupo.
 export async function eliminarGrupo(id) {
-    const grupos = await leerGrupos();
-    const indice = grupos.findIndex((g) => g.id === id);
-
-    if (indice === -1) {
+    const grupo = await obtenerGrupoId(id);
+    if (!grupo) {
         return null;
     }
-
-    const [eliminado] = grupos.splice(indice, 1);
-    await guardarGrupos(grupos);
-    return eliminado;
+    await coleccion().deleteOne({ id });
+    return grupo;
 }
 
-// Desactiva un grupo sin eliminarlo del archivo.
 export async function desactivarGrupo(id) {
-    const grupos = await leerGrupos();
-    const indice = grupos.findIndex((g) => g.id === id);
-
-    if (indice === -1) {
-        return null;
-    }
-
-    grupos[indice].activo = false;
-    await guardarGrupos(grupos);
-    return grupos[indice];
+    return coleccion().findOneAndUpdate(
+        { id },
+        { $set: { activo: false } },
+        { returnDocument: "after", projection: { _id: 0 } }
+    );
 }
-
-export default obtenerGrupos;

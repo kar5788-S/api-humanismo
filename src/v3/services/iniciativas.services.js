@@ -1,31 +1,102 @@
-import { crearServicioMongo } from "./mongo-resource.js";
+import Iniciativa from "../models/iniciativas.model.js";
 
-const servicio = crearServicioMongo("iniciativas", {
-    campos: {
-        titulo: { tipo: "texto", requerido: true },
-        categoria: { tipo: "texto", requerido: true },
-        responsable: { tipo: "texto", requerido: true },
-        activa: { tipo: "booleano", predeterminado: true },
-    },
-    filtros: {
-        titulo: { campo: "titulo" },
-        categoria: { campo: "categoria", tipo: "exacto" },
-        responsable: { campo: "responsable" },
-        activa: { campo: "activa", tipo: "booleano" },
-    },
-    campoActivo: "activa",
-});
+function regexSeguro(texto, exacto = false) {
+    const escapado = texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(exacto ? `^${escapado}$` : escapado, "i");
+}
 
-export const listaIniciativas = (filtros) => servicio.listar(filtros);
-export const obtenerIniciativaId = (id) => servicio.obtenerPorId(id);
-export const crearIniciativa = (datos) => servicio.crear(datos);
-export const actualizarIniciativa = (id, datos) => servicio.actualizar(id, datos);
-export const eliminarIniciativa = (id) => servicio.eliminar(id);
-export const desactivarIniciativa = (id) => servicio.desactivar(id);
+function crearError(mensaje, statusCode) {
+    const error = new Error(mensaje);
+    error.statusCode = statusCode;
+    return error;
+}
 
-export const listar = listaIniciativas;
-export const obtenerPorId = obtenerIniciativaId;
-export const crear = crearIniciativa;
-export const actualizar = actualizarIniciativa;
-export const eliminar = eliminarIniciativa;
-export const desactivar = desactivarIniciativa;
+async function calcularSiguienteId() {
+    const ultimaIniciativa = await Iniciativa.findOne().sort({ id: -1 }).select({ id: 1 }).lean();
+    return ultimaIniciativa?.id ? ultimaIniciativa.id + 1 : 1;
+}
+
+export async function listarIniciativas({ titulo, categoria, responsable, activa } = {}) {
+    const filtro = {};
+    if (typeof titulo === "string" && titulo.trim()) {
+        filtro.titulo = regexSeguro(titulo.trim());
+    }
+    if (typeof categoria === "string" && categoria.trim()) {
+        filtro.categoria = regexSeguro(categoria.trim(), true);
+    }
+    if (typeof responsable === "string" && responsable.trim()) {
+        filtro.responsable = regexSeguro(responsable.trim());
+    }
+    if (typeof activa === "boolean") {
+        filtro.activa = activa;
+    }
+    return Iniciativa.find(filtro).sort({ id: 1 });
+}
+
+export async function obtenerIniciativaPorId(id) {
+    return Iniciativa.findOne({ id });
+}
+
+export async function crearIniciativa(datos = {}) {
+    const titulo = typeof datos.titulo === "string" ? datos.titulo.trim() : "";
+    const categoria = typeof datos.categoria === "string" ? datos.categoria.trim() : "";
+    const responsable = typeof datos.responsable === "string"
+        ? datos.responsable.trim()
+        : "";
+    if (!titulo || !categoria || !responsable) {
+        throw crearError(
+            "titulo, categoria y responsable son obligatorios y deben ser textos no vacíos.",
+            400
+        );
+    }
+    if (datos.activa !== undefined && typeof datos.activa !== "boolean") {
+        throw crearError("activa debe ser un valor booleano.", 400);
+    }
+
+    return Iniciativa.create({
+        id: await calcularSiguienteId(),
+        titulo,
+        categoria,
+        responsable,
+        activa: datos.activa ?? true,
+    });
+}
+
+export async function actualizarIniciativa(id, datos = {}) {
+    const cambios = {};
+    for (const campo of ["titulo", "categoria", "responsable"]) {
+        if (datos[campo] !== undefined) {
+            if (typeof datos[campo] !== "string" || !datos[campo].trim()) {
+                throw crearError(`${campo} debe ser un texto no vacío.`, 400);
+            }
+            cambios[campo] = datos[campo].trim();
+        }
+    }
+    if (datos.activa !== undefined) {
+        if (typeof datos.activa !== "boolean") {
+            throw crearError("activa debe ser un valor booleano.", 400);
+        }
+        cambios.activa = datos.activa;
+    }
+    if (Object.keys(cambios).length === 0) {
+        throw crearError("Debe proporcionar al menos un campo válido para actualizar.", 400);
+    }
+
+    return Iniciativa.findOneAndUpdate(
+        { id },
+        { $set: cambios },
+        { new: true, runValidators: true }
+    );
+}
+
+export async function eliminarIniciativa(id) {
+    return Iniciativa.findOneAndDelete({ id });
+}
+
+export async function desactivarIniciativa(id) {
+    return Iniciativa.findOneAndUpdate(
+        { id },
+        { $set: { activa: false } },
+        { new: true, runValidators: true }
+    );
+}

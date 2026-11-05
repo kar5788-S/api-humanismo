@@ -1,158 +1,93 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { getDB } from "../../config/database.js";
+import { calcularSiguienteId, crearError, textoRegex } from "./mongo-helpers.js";
 
-const rutaIniciativas = new URL("../../data/iniciativas.json", import.meta.url);
-
-// Crea errores con un código HTTP para que la capa controladora los responda.
-function crearError(mensaje, statusCode) {
-    const error = new Error(mensaje);
-    error.statusCode = statusCode;
-    return error;
+function coleccion() {
+    return getDB().collection("iniciativas");
 }
 
-// Normaliza texto para comparar sin distinguir acentos ni mayúsculas.
-function normalizarTexto(valor = "") {
-    return valor
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLocaleLowerCase("es-MX")
-        .trim();
-}
-
-// Lee las iniciativas almacenadas en el archivo JSON.
-async function leerIniciativas() {
-    const contenido = await readFile(rutaIniciativas, "utf8");
-    return JSON.parse(contenido);
-}
-
-// Persiste el listado actualizado de iniciativas en el archivo JSON.
-async function guardarIniciativas(iniciativas) {
-    await writeFile(rutaIniciativas, JSON.stringify(iniciativas, null, 2), "utf8");
-    return iniciativas;
-}
-
-// Devuelve todas las iniciativas sin aplicar filtros.
 export async function obtenerIniciativas() {
-    return leerIniciativas();
+    return coleccion().find({}, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
 }
 
-// Lista iniciativas y aplica los filtros opcionales recibidos.
 export async function listaIniciativas({ titulo, categoria, responsable, activa } = {}) {
-    let iniciativas = await leerIniciativas();
-
-    if (typeof titulo === "string" && titulo.trim()) {
-        iniciativas = iniciativas.filter((iniciativa) =>
-            normalizarTexto(iniciativa.titulo).includes(normalizarTexto(titulo))
-        );
+    const filtro = {};
+    for (const [campo, valor] of Object.entries({ titulo, responsable })) {
+        if (typeof valor === "string" && valor.trim()) {
+            filtro[campo] = { $regex: textoRegex(valor.trim()), $options: "i" };
+        }
     }
     if (typeof categoria === "string" && categoria.trim()) {
-        iniciativas = iniciativas.filter(
-            (iniciativa) =>
-                normalizarTexto(iniciativa.categoria) === normalizarTexto(categoria)
-        );
-    }
-    if (typeof responsable === "string" && responsable.trim()) {
-        iniciativas = iniciativas.filter((iniciativa) =>
-            normalizarTexto(iniciativa.responsable).includes(normalizarTexto(responsable))
-        );
+        filtro.categoria = { $regex: `^${textoRegex(categoria.trim())}$`, $options: "i" };
     }
     if (typeof activa === "boolean") {
-        iniciativas = iniciativas.filter((iniciativa) => iniciativa.activa === activa);
+        filtro.activa = activa;
     }
-
-    return iniciativas;
+    return coleccion().find(filtro, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
 }
 
-// Busca una iniciativa por ID y devuelve null si no existe.
 export async function obtenerIniciativaId(id) {
-    const iniciativas = await leerIniciativas();
-    return iniciativas.find((iniciativa) => iniciativa.id === id) ?? null;
+    return coleccion().findOne({ id }, { projection: { _id: 0 } });
 }
 
-// Valida y guarda una iniciativa nueva.
 export async function crearIniciativa({ titulo, categoria, responsable, activa = true } = {}) {
-    const tituloListo = typeof titulo === "string" ? titulo.trim() : "";
-    const categoriaLista = typeof categoria === "string" ? categoria.trim() : "";
-    const responsableListo = typeof responsable === "string" ? responsable.trim() : "";
-
-    if (!tituloListo || !categoriaLista || !responsableListo) {
-        throw crearError(
-            "titulo, categoria y responsable son obligatorios y deben ser textos no vacíos.",
-            400
-        );
+    const documento = { titulo, categoria, responsable };
+    for (const [campo, valor] of Object.entries(documento)) {
+        if (typeof valor !== "string" || !valor.trim()) {
+            throw crearError(`${campo} es obligatorio y debe ser un texto no vacío.`, 400);
+        }
+        documento[campo] = valor.trim();
     }
     if (typeof activa !== "boolean") {
         throw crearError("activa debe ser un valor booleano.", 400);
     }
-
-    const iniciativas = await leerIniciativas();
-    const nuevoId = iniciativas.length > 0
-        ? Math.max(...iniciativas.map((iniciativa) => iniciativa.id)) + 1
-        : 1;
-    const nuevaIniciativa = {
-        id: nuevoId,
-        titulo: tituloListo,
-        categoria: categoriaLista,
-        responsable: responsableListo,
+    const iniciativa = {
+        id: await calcularSiguienteId(coleccion()),
+        ...documento,
         activa,
     };
-
-    iniciativas.push(nuevaIniciativa);
-    await guardarIniciativas(iniciativas);
-    return nuevaIniciativa;
-}
-
-// Actualiza los campos proporcionados de una iniciativa existente.
-export async function actualizarIniciativa(id, datos = {}) {
-    const iniciativas = await leerIniciativas();
-    const indice = iniciativas.findIndex((iniciativa) => iniciativa.id === id);
-    if (indice === -1) {
-        return null;
-    }
-
-    const { titulo, categoria, responsable, activa } = datos;
-    for (const [campo, valor] of Object.entries({ titulo, categoria, responsable })) {
-        if (valor !== undefined) {
-            if (typeof valor !== "string" || !valor.trim()) {
-                throw crearError(`${campo} debe ser un texto no vacío.`, 400);
-            }
-            iniciativas[indice][campo] = valor.trim();
-        }
-    }
-    if (activa !== undefined) {
-        if (typeof activa !== "boolean") {
-            throw crearError("activa debe ser un valor booleano.", 400);
-        }
-        iniciativas[indice].activa = activa;
-    }
-
-    await guardarIniciativas(iniciativas);
-    return iniciativas[indice];
-}
-
-// Elimina físicamente una iniciativa.
-export async function eliminarIniciativa(id) {
-    const iniciativas = await leerIniciativas();
-    const indice = iniciativas.findIndex((iniciativa) => iniciativa.id === id);
-    if (indice === -1) {
-        return null;
-    }
-
-    const [eliminada] = iniciativas.splice(indice, 1);
-    await guardarIniciativas(iniciativas);
-    return eliminada;
-}
-
-// Desactiva una iniciativa sin eliminarla del archivo.
-export async function desactivarIniciativa(id) {
-    const iniciativas = await leerIniciativas();
-    const iniciativa = iniciativas.find((item) => item.id === id);
-    if (!iniciativa) {
-        return null;
-    }
-
-    iniciativa.activa = false;
-    await guardarIniciativas(iniciativas);
+    await coleccion().insertOne(iniciativa);
     return iniciativa;
 }
 
-export default obtenerIniciativas;
+export async function actualizarIniciativa(id, datos = {}) {
+    const cambios = {};
+    for (const campo of ["titulo", "categoria", "responsable"]) {
+        if (datos[campo] !== undefined) {
+            if (typeof datos[campo] !== "string" || !datos[campo].trim()) {
+                throw crearError(`${campo} debe ser un texto no vacío.`, 400);
+            }
+            cambios[campo] = datos[campo].trim();
+        }
+    }
+    if (datos.activa !== undefined) {
+        if (typeof datos.activa !== "boolean") {
+            throw crearError("activa debe ser un valor booleano.", 400);
+        }
+        cambios.activa = datos.activa;
+    }
+    if (!Object.keys(cambios).length) {
+        throw crearError("Debe proporcionar al menos un campo válido para actualizar.", 400);
+    }
+    return coleccion().findOneAndUpdate(
+        { id },
+        { $set: cambios },
+        { returnDocument: "after", projection: { _id: 0 } }
+    );
+}
+
+export async function eliminarIniciativa(id) {
+    const iniciativa = await obtenerIniciativaId(id);
+    if (!iniciativa) {
+        return null;
+    }
+    await coleccion().deleteOne({ id });
+    return iniciativa;
+}
+
+export async function desactivarIniciativa(id) {
+    return coleccion().findOneAndUpdate(
+        { id },
+        { $set: { activa: false } },
+        { returnDocument: "after", projection: { _id: 0 } }
+    );
+}

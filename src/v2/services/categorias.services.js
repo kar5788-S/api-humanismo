@@ -1,182 +1,100 @@
-// Servicio para las operaciones y reglas de negocio de categorías.
-// Lee y escribe en data/categorias.json.
-import { readFile, writeFile } from "node:fs/promises";
+import { getDB } from "../../config/database.js";
+import { calcularSiguienteId, crearError, textoRegex } from "./mongo-helpers.js";
 
-const rutaCategorias = new URL("../../data/categorias.json", import.meta.url);
-
-// Utilidades
-
-function crearError(mensaje, statusCode) {
-    const error = new Error(mensaje);
-    error.statusCode = statusCode;
-    return error;
+function coleccion() {
+    return getDB().collection("categorias");
 }
 
-function normalizarTexto(valor = "") {
-    return valor
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLocaleLowerCase("es-MX")
-        .trim();
-}
-
-// Lectura / escritura del archivo
-
-async function leerCategorias() {
-    const contenido = await readFile(rutaCategorias, "utf8");
-    return JSON.parse(contenido);
-}
-
-async function guardarCategorias(categorias) {
-    await writeFile(rutaCategorias, JSON.stringify(categorias, null, 2), "utf8");
-    return categorias;
-}
-
-
-// Listar todas las categorías o aplicar filtros opcionales
-// ({ nombre, activa }) desde query params.
 export async function obtenerCategorias() {
-    return await leerCategorias();
+    return coleccion().find({}, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
 }
 
 export async function listaCategorias({ nombre, activa } = {}) {
-    let categorias = await leerCategorias();
-
-    if (typeof nombre === "string" && nombre.trim() !== "") {
-        categorias = categorias.filter((categoria) =>
-            normalizarTexto(categoria.nombre).includes(normalizarTexto(nombre))
-        );
+    const filtro = {};
+    if (typeof nombre === "string" && nombre.trim()) {
+        filtro.nombre = { $regex: textoRegex(nombre.trim()), $options: "i" };
     }
-
     if (typeof activa === "boolean") {
-        categorias = categorias.filter((categoria) => categoria.activa === activa);
+        filtro.activa = activa;
     }
-
-    return categorias;
+    return coleccion().find(filtro, { projection: { _id: 0 } }).sort({ id: 1 }).toArray();
 }
 
-// Obtener una categoría por ID
 export async function obtenerCategoriaId(id) {
-    const categorias = await leerCategorias();
-    return categorias.find((categoria) => categoria.id === id) ?? null;
+    return coleccion().findOne({ id }, { projection: { _id: 0 } });
 }
 
-// Crear una categoría nueva y guardarla en el JSON
 export async function crearCategoria({ nombre, descripcion, activa = true } = {}) {
     const nombreListo = typeof nombre === "string" ? nombre.trim() : "";
-    const descripcionListo = typeof descripcion === "string" ? descripcion.trim() : "";
-
-    if (!nombreListo) {
-        throw crearError("El nombre de la categoría es obligatorio.", 400);
-    }
-    if (!descripcionListo) {
-        throw crearError("La descripción de la categoría es obligatoria.", 400);
+    const descripcionLista = typeof descripcion === "string" ? descripcion.trim() : "";
+    if (!nombreListo || !descripcionLista) {
+        throw crearError("El nombre y la descripción de la categoría son obligatorios.", 400);
     }
     if (typeof activa !== "boolean") {
         throw crearError("El campo activa debe ser booleano.", 400);
     }
-
-    const categorias = await leerCategorias();
-
-    const existe = categorias.some(
-        (categoria) =>
-            normalizarTexto(categoria.nombre) === normalizarTexto(nombreListo)
-    );
-    if (existe) {
+    const duplicada = await coleccion().findOne({
+        nombre: { $regex: `^${textoRegex(nombreListo)}$`, $options: "i" },
+    });
+    if (duplicada) {
         throw crearError("Ya existe una categoría con ese nombre.", 409);
     }
 
-    const nuevoId =
-        categorias.length > 0 ? Math.max(...categorias.map((c) => c.id)) + 1 : 1;
-
-    const nuevaCategoria = {
-        id: nuevoId,
+    const categoria = {
+        id: await calcularSiguienteId(coleccion()),
         nombre: nombreListo,
-        descripcion: descripcionListo,
+        descripcion: descripcionLista,
         activa,
     };
-
-    categorias.push(nuevaCategoria);
-    await guardarCategorias(categorias);
-
-    return nuevaCategoria;
+    await coleccion().insertOne(categoria);
+    return categoria;
 }
 
-// Actualizar una categoría existente
 export async function actualizarCategoria(id, datos = {}) {
-    const categorias = await leerCategorias();
-    const indice = categorias.findIndex((categoria) => categoria.id === id);
-
-    if (indice === -1) {
-        return null;
-    }
-
-    const { nombre, descripcion, activa } = datos;
-
-    if (nombre !== undefined) {
-        const nombreListo = typeof nombre === "string" ? nombre.trim() : "";
-        if (!nombreListo) {
+    const cambios = {};
+    if (datos.nombre !== undefined) {
+        if (typeof datos.nombre !== "string" || !datos.nombre.trim()) {
             throw crearError("El nombre no puede estar vacío.", 400);
         }
-        const duplicado = categorias.some(
-            (categoria) =>
-                categoria.id !== id &&
-                normalizarTexto(categoria.nombre) === normalizarTexto(nombreListo)
-        );
-        if (duplicado) {
-            throw crearError("Ya existe otra categoría con ese nombre.", 409);
-        }
-        categorias[indice].nombre = nombreListo;
+        cambios.nombre = datos.nombre.trim();
     }
-
-    if (descripcion !== undefined) {
-        const descripcionLista =
-            typeof descripcion === "string" ? descripcion.trim() : "";
-        if (!descripcionLista) {
+    if (datos.descripcion !== undefined) {
+        if (typeof datos.descripcion !== "string" || !datos.descripcion.trim()) {
             throw crearError("La descripción no puede estar vacía.", 400);
         }
-        categorias[indice].descripcion = descripcionLista;
+        cambios.descripcion = datos.descripcion.trim();
     }
-
-    if (activa !== undefined) {
-        if (typeof activa !== "boolean") {
+    if (datos.activa !== undefined) {
+        if (typeof datos.activa !== "boolean") {
             throw crearError("El campo activa debe ser booleano.", 400);
         }
-        categorias[indice].activa = activa;
+        cambios.activa = datos.activa;
     }
-
-    await guardarCategorias(categorias);
-    return categorias[indice];
+    if (Object.keys(cambios).length === 0) {
+        throw crearError("Debe proporcionar al menos un campo para actualizar.", 400);
+    }
+    if (cambios.nombre) {
+        const duplicada = await coleccion().findOne({
+            id: { $ne: id },
+            nombre: { $regex: `^${textoRegex(cambios.nombre)}$`, $options: "i" },
+        });
+        if (duplicada) {
+            throw crearError("Ya existe otra categoría con ese nombre.", 409);
+        }
+    }
+    const resultado = await coleccion().findOneAndUpdate(
+        { id },
+        { $set: cambios },
+        { returnDocument: "after", projection: { _id: 0 } }
+    );
+    return resultado;
 }
 
-// Eliminar físicamente una categoría
 export async function eliminarCategoria(id) {
-    const categorias = await obtenerCategorias();
-    const indice = categorias.findIndex((categoria) => categoria.id === id);
-
-    if (indice === -1) {
+    const categoria = await obtenerCategoriaId(id);
+    if (!categoria) {
         return null;
     }
-
-    const [eliminada] = categorias.splice(indice, 1);
-    await guardarCategorias(categorias);
-    return eliminada;
+    await coleccion().deleteOne({ id });
+    return categoria;
 }
-
-
-
-// Dar de baja lógica
-export async function desactivarCategoria(id) {
-    const categorias = await leerCategorias();
-    const indice = categorias.findIndex((categoria) => categoria.id === id);
-
-    if (indice === -1) {
-        return null;
-    }
-
-    categorias[indice].activa = false;
-    await guardarCategorias(categorias);
-    return categorias[indice];
-}
-
-export default obtenerCategorias;

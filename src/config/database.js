@@ -21,7 +21,6 @@ export async function connectDB() {
     connectionPromise = client.connect()
         .then((connectedClient) => {
             database = connectedClient.db(databaseName);
-            console.log("Conexión a la base de datos establecida");
             return database;
         })
         .catch(async (error) => {
