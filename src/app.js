@@ -8,6 +8,10 @@ import iniciativasRouterV2 from "./v2/routes/iniciativas.routes.js";
 import categoriasRouterV2 from "./v2/routes/categorias.routes.js";
 import gruposRouterV2 from "./v2/routes/grupos.routes.js";
 import { buscarPorCategoria as buscarPorCategoriaV2 } from "./v2/controllers/iniciativas.controller.js";
+import iniciativasRouterV3 from "./v3/routes/iniciativas.routes.js";
+import categoriasRouterV3 from "./v3/routes/categorias.routes.js";
+import gruposRouterV3 from "./v3/routes/grupos.routes.js";
+import { buscarPorCategoria as buscarPorCategoriaV3 } from "./v3/controllers/iniciativas.controller.js";
 
 export const app = express();
 
@@ -24,15 +28,20 @@ app.use("/api/v2/categorias", categoriasRouterV2);
 app.use("/api/v2/grupos", gruposRouterV2);
 app.get("/api/v2/buscar", buscarPorCategoriaV2);
 
-app.use("/api/iniciativas", iniciativasRouterV1);
-app.use("/api/categorias", categoriasRouterV1);
-app.use("/api/grupos", gruposRouterV1);
-app.get("/buscar", buscarPorCategoriaV1);
+app.use("/api/v3/iniciativas", iniciativasRouterV3);
+app.use("/api/v3/categorias", categoriasRouterV3);
+app.use("/api/v3/grupos", gruposRouterV3);
+app.get("/api/v3/buscar", buscarPorCategoriaV3);
+
+app.use("/api/iniciativas", iniciativasRouterV3);
+app.use("/api/categorias", categoriasRouterV3);
+app.use("/api/grupos", gruposRouterV3);
+app.get("/buscar", buscarPorCategoriaV3);
 
 app.get("/", (req, res) => {
     res.json({
         message: "API HUMANISMO FUNCIONANDO",
-        version: "1.0",
+        version: "3.0",
     });
 });
 

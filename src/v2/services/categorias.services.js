@@ -1,9 +1,8 @@
 // Servicio para las operaciones y reglas de negocio de categorías.
 // Lee y escribe en data/categorias.json.
-
 import { readFile, writeFile } from "node:fs/promises";
 
-const rutaCategorias = new URL("../data/categorias.json", import.meta.url);
+const rutaCategorias = new URL("../../data/categorias.json", import.meta.url);
 
 // Utilidades
 

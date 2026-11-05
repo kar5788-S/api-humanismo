@@ -3,7 +3,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 
-const rutaCategorias = new URL("../data/categorias.json", import.meta.url);
+const rutaCategorias = new URL("../../data/categorias.json", import.meta.url);
 
 // Utilidades
 

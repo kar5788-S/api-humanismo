@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 
-const rutaIniciativas = new URL("../data/iniciativas.json", import.meta.url);
+const rutaIniciativas = new URL("../../data/iniciativas.json", import.meta.url);
 
 // Crea errores con un código HTTP para que la capa controladora los responda.
 function crearError(mensaje, statusCode) {

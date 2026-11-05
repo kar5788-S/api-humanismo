@@ -3,7 +3,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 
-const rutaGrupos = new URL("../data/grupos.json", import.meta.url);
+const rutaGrupos = new URL("../../data/grupos.json", import.meta.url);
 
 // Utilidades
 
